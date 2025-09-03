@@ -26,6 +26,7 @@
 #ifndef SI5351_H_
 #define SI5351_H_
 
+#include "stm32g4xx_hal_i2c.h"
 #define SI5351_I2C_ADDRESS		0xC0		//default I2C address of Si5351
 #define SI5351_I2C_PERIPHERAL	I2C1		//default I2C interface
 
@@ -437,7 +438,7 @@ typedef struct
 	EnableState Fanout_XO_EN;
 	EnableState Fanout_CLKIN_EN;
 
-	I2C_TypeDef *I2Cx;				//the I2C interface that will be used
+	I2C_HandleTypeDef *I2Cx;		//the I2C interface that will be used
 	uint8_t HW_I2C_Address;			//I2C address of the Si5351 for the packages with A0 pin
 									//(also, some duds with strange address reported)
 	Si5351_OSCConfigTypeDef OSC;	//Oscillator, CLKIN and VCXO settings

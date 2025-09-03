@@ -24,205 +24,35 @@
  */
 
 //put your I2C HAL library name here
-#include "stm32f10x_i2c.h"
+#include "stm32g4xx_hal_def.h"
+#include "stm32g4xx_hal_i2c.h"
 
 #include "si5351.h"
 
-int Si5351_WriteRegister(Si5351_ConfigTypeDef *Si5351_ConfigStruct,  uint8_t reg_address, uint8_t reg_data)
+HAL_StatusTypeDef Si5351_WriteRegister(Si5351_ConfigTypeDef *Si5351_ConfigStruct,  uint8_t reg_address, uint8_t reg_data)
 {
-	uint32_t error_wait;
-
-	error_wait = I2C_TIMEOUT;
-	while (I2C_GetFlagStatus(Si5351_ConfigStruct->I2Cx, I2C_FLAG_BUSY) == SET)
-	{
-		error_wait--;
-		if (error_wait==0)
-		{
-			I2C_SoftwareResetCmd(Si5351_ConfigStruct->I2Cx, ENABLE);
-			I2C_SoftwareResetCmd(Si5351_ConfigStruct->I2Cx, DISABLE);
-			return 1;
-		}
-	}
-	//wait for I2C to get ready, if not ready in time, reset I2C and return
-
-	I2C_GenerateSTART(Si5351_ConfigStruct->I2Cx, ENABLE);
-	//send START condition
-
-	error_wait = I2C_TIMEOUT;
-	while (I2C_CheckEvent(Si5351_ConfigStruct->I2Cx, I2C_EVENT_MASTER_MODE_SELECT) == ERROR)
-	{
-		error_wait--;
-		if (error_wait==0) return 1;
-	}
-	//wait for START to be sent, if not sent in time, return
-
-	I2C_Send7bitAddress(Si5351_ConfigStruct->I2Cx, Si5351_ConfigStruct->HW_I2C_Address, I2C_Direction_Transmitter);
-	//send address+RW bit
-
-	error_wait = I2C_TIMEOUT;
-	while (I2C_CheckEvent(Si5351_ConfigStruct->I2Cx, I2C_EVENT_MASTER_TRANSMITTER_MODE_SELECTED) == ERROR)
-	{
-		error_wait--;
-		if (error_wait==0) return 1;
-	}
-	//wait for address to be sent, if not sent in time, return
-
-	I2C_SendData(Si5351_ConfigStruct->I2Cx, reg_address);
-	//send reg address
-
-	error_wait = I2C_TIMEOUT;
-	while (I2C_CheckEvent(Si5351_ConfigStruct->I2Cx, I2C_EVENT_MASTER_BYTE_TRANSMITTED) == ERROR)
-	{
-		error_wait--;
-		if (error_wait==0) return 1;
-	}
-	//wait for reg address to be sent
-
-	I2C_SendData(Si5351_ConfigStruct->I2Cx, reg_data);
-	//send reg data
-
-	error_wait = I2C_TIMEOUT;
-	while (I2C_CheckEvent(Si5351_ConfigStruct->I2Cx, I2C_EVENT_MASTER_BYTE_TRANSMITTED) == ERROR)
-	{
-		error_wait--;
-		if (error_wait==0) return 1;
-	}
-	//wait for data to be sent, if not sent in time, return
-
-	I2C_GenerateSTOP(Si5351_ConfigStruct->I2Cx, ENABLE);
-	//generate STOP condition
-
-	error_wait = I2C_TIMEOUT;
-	while (I2C_GetFlagStatus(Si5351_ConfigStruct->I2Cx, I2C_FLAG_STOPF))
-	{
-		error_wait--;
-		if (error_wait==0) return 1;
-	}
-	//wait until STOP is cleared
-
-	return 0;
+    return HAL_I2C_Mem_Write(
+        Si5351_ConfigStruct->I2Cx,
+        Si5351_ConfigStruct->HW_I2C_Address,
+        reg_address,
+        1,
+        &reg_data,
+        sizeof(reg_data),
+        I2C_TIMEOUT
+    );
 }
 
-uint8_t Si5351_ReadRegister(Si5351_ConfigTypeDef *Si5351_ConfigStruct,  uint8_t reg_address)
+HAL_StatusTypeDef Si5351_ReadRegister(Si5351_ConfigTypeDef *Si5351_ConfigStruct,  uint8_t reg_address, uint8_t *out)
 {
-	uint32_t error_wait;
-
-	error_wait = I2C_TIMEOUT;
-	while (I2C_GetFlagStatus(Si5351_ConfigStruct->I2Cx, I2C_FLAG_BUSY) == SET)
-	{
-		error_wait--;
-		if (error_wait==0)
-		{
-			I2C_SoftwareResetCmd(Si5351_ConfigStruct->I2Cx, ENABLE);
-			I2C_SoftwareResetCmd(Si5351_ConfigStruct->I2Cx, DISABLE);
-			return 1;
-		}
-	}
-	//wait for I2C to get ready, if not ready in time, reset I2C and return
-
-	I2C_GenerateSTART(Si5351_ConfigStruct->I2Cx, ENABLE);
-	//send START condition
-
-	error_wait = I2C_TIMEOUT;
-	while (I2C_CheckEvent(Si5351_ConfigStruct->I2Cx, I2C_EVENT_MASTER_MODE_SELECT) == ERROR)
-	{
-		error_wait--;
-		if (error_wait==0) return 1;
-	}
-	//wait for START to be sent, if not sent in time, return
-
-	I2C_Send7bitAddress(Si5351_ConfigStruct->I2Cx, Si5351_ConfigStruct->HW_I2C_Address, I2C_Direction_Transmitter);
-	//send address+RW bit
-
-	error_wait = I2C_TIMEOUT;
-	while (I2C_CheckEvent(Si5351_ConfigStruct->I2Cx, I2C_EVENT_MASTER_TRANSMITTER_MODE_SELECTED) == ERROR)
-	{
-		error_wait--;
-		if (error_wait==0) return 1;
-	}
-	//wait for address to be sent, if not sent in time, return
-
-	I2C_SendData(Si5351_ConfigStruct->I2Cx, reg_address);
-	//send reg address
-
-	error_wait = I2C_TIMEOUT;
-	while (I2C_CheckEvent(Si5351_ConfigStruct->I2Cx, I2C_EVENT_MASTER_BYTE_TRANSMITTED) == ERROR)
-	{
-		error_wait--;
-		if (error_wait==0) return 1;
-	}
-	//wait for reg address to be sent
-
-	I2C_GenerateSTOP(Si5351_ConfigStruct->I2Cx, ENABLE);
-	//generate STOP condition
-
-	error_wait = I2C_TIMEOUT;
-	while (I2C_GetFlagStatus(Si5351_ConfigStruct->I2Cx, I2C_FLAG_STOPF))
-	{
-		error_wait--;
-		if (error_wait==0) return 1;
-	}
-	//wait until STOP is cleared
-
-
-	error_wait = I2C_TIMEOUT;
-	while (I2C_GetFlagStatus(Si5351_ConfigStruct->I2Cx, I2C_FLAG_BUSY) == SET)
-	{
-		error_wait--;
-		if (error_wait==0)
-		{
-			I2C_SoftwareResetCmd(Si5351_ConfigStruct->I2Cx, ENABLE);
-			I2C_SoftwareResetCmd(Si5351_ConfigStruct->I2Cx, DISABLE);
-			return 1;
-		}
-	}
-	//wait for I2C to get ready, if not ready in time, reset I2C and return
-
-	I2C_GenerateSTART(Si5351_ConfigStruct->I2Cx, ENABLE);
-	//send START condition
-
-	error_wait = I2C_TIMEOUT;
-	while (I2C_CheckEvent(Si5351_ConfigStruct->I2Cx, I2C_EVENT_MASTER_MODE_SELECT) == ERROR)
-	{
-		error_wait--;
-		if (error_wait==0) return 1;
-	}
-	//wait for START to be sent, if not sent in time, return
-
-	I2C_Send7bitAddress(Si5351_ConfigStruct->I2Cx, Si5351_ConfigStruct->HW_I2C_Address, I2C_Direction_Receiver);
-	//send address+RW bit
-
-	error_wait = I2C_TIMEOUT;
-	while (I2C_CheckEvent(Si5351_ConfigStruct->I2Cx, I2C_EVENT_MASTER_RECEIVER_MODE_SELECTED) == ERROR)
-	{
-		error_wait--;
-		if (error_wait==0) return 1;
-	}
-	//wait for address to be sent, if not sent in time, return
-
-	while (I2C_CheckEvent(Si5351_ConfigStruct->I2Cx, I2C_EVENT_MASTER_BYTE_RECEIVED) == ERROR)
-	{
-		error_wait--;
-		if (error_wait==0) return 1;
-	}
-	//wait for data
-
-	uint8_t reg_data;
-	reg_data = I2C_ReceiveData(Si5351_ConfigStruct->I2Cx);
-	//receive reg data
-
-	I2C_GenerateSTOP(Si5351_ConfigStruct->I2Cx, ENABLE);
-	//generate STOP condition
-
-	error_wait = I2C_TIMEOUT;
-	while (I2C_GetFlagStatus(Si5351_ConfigStruct->I2Cx, I2C_FLAG_STOPF))
-	{
-		error_wait--;
-		if (error_wait==0) return 1;
-	}
-	//wait until STOP is cleared
-
-	return reg_data;
+    return HAL_I2C_Mem_Read(
+        Si5351_ConfigStruct->I2Cx,
+        Si5351_ConfigStruct->HW_I2C_Address,
+        reg_address,
+        1,
+        out,
+        sizeof(*out),
+        I2C_TIMEOUT
+    );
 }
 
 //set safe values in the config structure
