@@ -24,8 +24,36 @@
  */
 
 //put your I2C HAL library name here
-#include "stm32g4xx_hal_def.h"
-#include "stm32g4xx_hal_i2c.h"
+#include "stm32g4xx_hal.h"
+
+#include "si5351.h"
+
+// ---- low-level helpers and error-propagation macro ----
+
+#define TRY(expr) do { HAL_StatusTypeDef __s = (expr); if (__s != HAL_OK) return __s; } while (0)
+
+// Public wrappers
+HAL_StatusTypeDef Si5351_WriteRegister(Si5351_ConfigTypeDef *cfg, uint8_t reg, uint8_t val)
+{
+    return HAL_I2C_Mem_Write(cfg->I2Cx,
+                             cfg->HW_I2C_Address,
+                             reg,
+                             I2C_MEMADD_SIZE_8BIT,
+                             &val,
+                             1,
+                             I2C_TIMEOUT);
+}
+
+HAL_StatusTypeDef Si5351_ReadRegister(Si5351_ConfigTypeDef *cfg, uint8_t reg, uint8_t *out)
+{
+    return HAL_I2C_Mem_Read(cfg->I2Cx,
+                            cfg->HW_I2C_Address,
+                            reg,
+                            I2C_MEMADD_SIZE_8BIT,
+                            out,
+                            1,
+                            I2C_TIMEOUT);
+}
 
 #include "si5351.h"
 
@@ -113,31 +141,31 @@ void Si5351_StructInit(Si5351_ConfigTypeDef *Si5351_ConfigStruct)
 	}
 }
 
-void Si5351_OSCConfig(Si5351_ConfigTypeDef *Si5351_ConfigStruct)
+HAL_StatusTypeDef Si5351_OSCConfig(Si5351_ConfigTypeDef *Si5351_ConfigStruct)
 {
 	uint8_t tmp;
 	uint32_t VCXO_Param;
 
 	//set XTAL capacitive load and PLL VCO load capacitance
-	tmp = Si5351_ReadRegister(Si5351_ConfigStruct, REG_XTAL_CL);
+	TRY(Si5351_ReadRegister(Si5351_ConfigStruct, REG_XTAL_CL, &tmp));
 	tmp &= ~(XTAL_CL_MASK | PLL_CL_MASK);
 	tmp |= (XTAL_CL_MASK & (Si5351_ConfigStruct->OSC.OSC_XTAL_Load)) | (PLL_CL_MASK & ((Si5351_ConfigStruct->PLL[0].PLL_Capacitive_Load) << 1)) | (PLL_CL_MASK & ((Si5351_ConfigStruct->PLL[1].PLL_Capacitive_Load) << 4));
-	Si5351_WriteRegister(Si5351_ConfigStruct, REG_XTAL_CL, tmp);
+	TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_XTAL_CL, tmp));
 
 	//set CLKIN pre-divider
-	tmp = Si5351_ReadRegister(Si5351_ConfigStruct, REG_CLKIN_DIV);
+	TRY(Si5351_ReadRegister(Si5351_ConfigStruct, REG_CLKIN_DIV, &tmp));
 	tmp &= ~CLKIN_MASK;
 	tmp |= CLKIN_MASK & Si5351_ConfigStruct->OSC.CLKIN_Div;
-	Si5351_WriteRegister(Si5351_ConfigStruct, REG_CLKIN_DIV, tmp);
+	TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_CLKIN_DIV, tmp));
 
 	//set fanout of XO, MS0, MS4 and CLKIN - should be always on unless you
 	//need to reduce power consumption
-	tmp = Si5351_ReadRegister(Si5351_ConfigStruct, REG_FANOUT_EN);
+	TRY(Si5351_ReadRegister(Si5351_ConfigStruct, REG_FANOUT_EN, &tmp));
 	tmp &= ~(FANOUT_CLKIN_EN_MASK | FANOUT_MS_EN_MASK | FANOUT_XO_EN_MASK);
 	if (Si5351_ConfigStruct->Fanout_CLKIN_EN == ON) tmp |= FANOUT_CLKIN_EN_MASK;
 	if (Si5351_ConfigStruct->Fanout_MS_EN == ON) tmp |= FANOUT_MS_EN_MASK;
 	if (Si5351_ConfigStruct->Fanout_XO_EN == ON) tmp |= FANOUT_XO_EN_MASK;
-	Si5351_WriteRegister(Si5351_ConfigStruct, REG_FANOUT_EN, tmp);
+	TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_FANOUT_EN, tmp));
 
 	//if "b" in PLLB set to 10^6, set VCXO parameter
 	if (Si5351_ConfigStruct->PLL[1].PLL_Multiplier_Denominator == 1000000)
@@ -151,18 +179,18 @@ void Si5351_OSCConfig(Si5351_ConfigTypeDef *Si5351_ConfigStruct)
 	}
 
 	tmp = (uint8_t) VCXO_Param;
-	Si5351_WriteRegister(Si5351_ConfigStruct, REG_VCXO_PARAM_0_7, tmp);
+	TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_VCXO_PARAM_0_7, tmp));
 	tmp = (uint8_t)(VCXO_Param>>8);
-	Si5351_WriteRegister(Si5351_ConfigStruct, REG_VCXO_PARAM_8_15, tmp);
+	TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_VCXO_PARAM_8_15, tmp));
 	tmp = (uint8_t)((VCXO_Param>>16) & VCXO_PARAM_16_21_MASK);
-	Si5351_WriteRegister(Si5351_ConfigStruct, REG_VCXO_PARAM_16_21, tmp);
+	TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_VCXO_PARAM_16_21, tmp));
 }
 
 EnableState Si5351_CheckStatusBit(Si5351_ConfigTypeDef *Si5351_ConfigStruct, Si5351_StatusBitTypeDef StatusBit)
 {
 	uint8_t tmp;
 
-	tmp = Si5351_ReadRegister(Si5351_ConfigStruct, REG_DEV_STATUS);
+	TRY(Si5351_ReadRegister(Si5351_ConfigStruct, REG_DEV_STATUS, &tmp));
 	tmp &= StatusBit;
 	return tmp;
 }
@@ -171,15 +199,15 @@ EnableState Si5351_CheckStickyBit(Si5351_ConfigTypeDef *Si5351_ConfigStruct, Si5
 {
 	uint8_t tmp;
 
-	tmp = Si5351_ReadRegister(Si5351_ConfigStruct, REG_DEV_STICKY);
+	TRY(Si5351_ReadRegister(Si5351_ConfigStruct, REG_DEV_STICKY, &tmp));
 	tmp &= StatusBit;
 	return tmp;
 }
 
-void Si5351_InterruptConfig(Si5351_ConfigTypeDef *Si5351_ConfigStruct)
+HAL_StatusTypeDef Si5351_InterruptConfig(Si5351_ConfigTypeDef *Si5351_ConfigStruct)
 {
 	uint8_t tmp;
-	tmp = Si5351_ReadRegister(Si5351_ConfigStruct, REG_INT_MASK);
+	TRY(Si5351_ReadRegister(Si5351_ConfigStruct, REG_INT_MASK, &tmp));
 
 	tmp &= ~INT_MASK_LOS_XTAL_MASK;
 	if (Si5351_ConfigStruct->Interrupt_Mask_XTAL == ON)
@@ -211,36 +239,36 @@ void Si5351_InterruptConfig(Si5351_ConfigTypeDef *Si5351_ConfigStruct)
 		tmp |= INT_MASK_SYS_INIT_MASK;
 	}
 
-	Si5351_WriteRegister(Si5351_ConfigStruct, REG_INT_MASK, tmp);
+	TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_INT_MASK, tmp));
 }
 
-void Si5351_ClearStickyBit(Si5351_ConfigTypeDef *Si5351_ConfigStruct, Si5351_StatusBitTypeDef StatusBit)
+HAL_StatusTypeDef Si5351_ClearStickyBit(Si5351_ConfigTypeDef *Si5351_ConfigStruct, Si5351_StatusBitTypeDef StatusBit)
 {
 	uint8_t tmp;
 
-	tmp = Si5351_ReadRegister(Si5351_ConfigStruct, REG_DEV_STICKY);
+	TRY(Si5351_ReadRegister(Si5351_ConfigStruct, REG_DEV_STICKY, &tmp));
 	tmp &= ~StatusBit;
-	Si5351_WriteRegister(Si5351_ConfigStruct, REG_DEV_STICKY, tmp);
+	TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_DEV_STICKY, tmp));
 }
 
-void Si5351_PLLConfig(Si5351_ConfigTypeDef *Si5351_ConfigStruct, Si5351_PLLChannelTypeDef PLL_Channel)
+HAL_StatusTypeDef Si5351_PLLConfig(Si5351_ConfigTypeDef *Si5351_ConfigStruct, Si5351_PLLChannelTypeDef PLL_Channel)
 {
 	uint8_t tmp, tmp_mask;
 	uint32_t MSN_P1, MSN_P2, MSN_P3;
 
 	//set PLL clock source
-	tmp = Si5351_ReadRegister(Si5351_ConfigStruct, REG_PLL_CLOCK_SOURCE);
+	TRY(Si5351_ReadRegister(Si5351_ConfigStruct, REG_PLL_CLOCK_SOURCE, &tmp));
 	tmp_mask = PLLA_CLOCK_SOURCE_MASK << PLL_Channel;
 	tmp &= ~tmp_mask;
 	tmp |= tmp_mask & Si5351_ConfigStruct->PLL[PLL_Channel].PLL_Clock_Source;
-	Si5351_WriteRegister(Si5351_ConfigStruct, REG_PLL_CLOCK_SOURCE, tmp);
+	TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_PLL_CLOCK_SOURCE, tmp));
 
 	//if new multiplier not even  integer, disable the integer mode
 	if ((Si5351_ConfigStruct->PLL[PLL_Channel].PLL_Multiplier_Numerator != 0) | ((Si5351_ConfigStruct->PLL[PLL_Channel].PLL_Multiplier_Integer & 0x01) != 0 ))
 	{
-		tmp = Si5351_ReadRegister(Si5351_ConfigStruct, REG_FB_INT + PLL_Channel);
+		TRY(Si5351_ReadRegister(Si5351_ConfigStruct, REG_FB_INT + PLL_Channel, &tmp));
 		tmp &= ~FB_INT_MASK;
-		Si5351_WriteRegister(Si5351_ConfigStruct, REG_FB_INT + PLL_Channel, tmp);
+		TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_FB_INT + PLL_Channel, tmp));
 	}
 
 	//configure the PLL multiplier
@@ -249,65 +277,65 @@ void Si5351_PLLConfig(Si5351_ConfigTypeDef *Si5351_ConfigStruct, Si5351_PLLChann
 	MSN_P3 = Si5351_ConfigStruct->PLL[PLL_Channel].PLL_Multiplier_Denominator;
 
 	tmp = (uint8_t) MSN_P1;
-	Si5351_WriteRegister(Si5351_ConfigStruct, REG_MSN_P1_0_7 + 8 * PLL_Channel, tmp);
+	TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_MSN_P1_0_7 + 8 * PLL_Channel, tmp));
 	tmp = (uint8_t) (MSN_P1 >> 8);
-	Si5351_WriteRegister(Si5351_ConfigStruct, REG_MSN_P1_8_15 + 8 * PLL_Channel, tmp);
+	TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_MSN_P1_8_15 + 8 * PLL_Channel, tmp));
 	tmp = (uint8_t) (MSN_P1_16_17_MASK & (MSN_P1 >> 16));
-	Si5351_WriteRegister(Si5351_ConfigStruct, REG_MSN_P1_16_17 + 8 * PLL_Channel, tmp);
+	TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_MSN_P1_16_17 + 8 * PLL_Channel, tmp));
 
 	tmp = (uint8_t) MSN_P2;
-	Si5351_WriteRegister(Si5351_ConfigStruct, REG_MSN_P2_0_7 + 8 * PLL_Channel, tmp);
+	TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_MSN_P2_0_7 + 8 * PLL_Channel, tmp));
 	tmp = (uint8_t) (MSN_P2 >> 8);
-	Si5351_WriteRegister(Si5351_ConfigStruct, REG_MSN_P2_8_15 + 8 * PLL_Channel, tmp);
-	tmp = Si5351_ReadRegister(Si5351_ConfigStruct, REG_MSN_P2_16_19);
+	TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_MSN_P2_8_15 + 8 * PLL_Channel, tmp));
+	TRY(Si5351_ReadRegister(Si5351_ConfigStruct, REG_MSN_P2_16_19, &tmp));
 	tmp &= ~MSN_P2_16_19_MASK;
 	tmp |= (uint8_t) (MSN_P2_16_19_MASK & (MSN_P2 >> 16));
-	Si5351_WriteRegister(Si5351_ConfigStruct, REG_MSN_P2_16_19 + 8 * PLL_Channel, tmp);
+	TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_MSN_P2_16_19 + 8 * PLL_Channel, tmp));
 
 	tmp = (uint8_t) MSN_P3;
-	Si5351_WriteRegister(Si5351_ConfigStruct, REG_MSN_P3_0_7 + 8 * PLL_Channel, tmp);
+	TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_MSN_P3_0_7 + 8 * PLL_Channel, tmp));
 	tmp = (uint8_t) (MSN_P3 >> 8);
-	Si5351_WriteRegister(Si5351_ConfigStruct, REG_MSN_P3_8_15 + 8 * PLL_Channel, tmp);
-	tmp = Si5351_ReadRegister(Si5351_ConfigStruct, REG_MSN_P3_16_19);
+	TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_MSN_P3_8_15 + 8 * PLL_Channel, tmp));
+	TRY(Si5351_ReadRegister(Si5351_ConfigStruct, REG_MSN_P3_16_19, &tmp));
 	tmp &= ~MSN_P3_16_19_MASK;
 	tmp |= (uint8_t) (MSN_P3_16_19_MASK & ((MSN_P3 >> 16) << 4));
-	Si5351_WriteRegister(Si5351_ConfigStruct, REG_MSN_P3_16_19 + 8 * PLL_Channel, tmp);
+	TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_MSN_P3_16_19 + 8 * PLL_Channel, tmp));
 
 	//if new multiplier is an even integer, enable integer mode
 	if ((Si5351_ConfigStruct->PLL[PLL_Channel].PLL_Multiplier_Numerator == 0) & ((Si5351_ConfigStruct->PLL[PLL_Channel].PLL_Multiplier_Integer & 0x01) == 0 ))
 	{
-		tmp = Si5351_ReadRegister(Si5351_ConfigStruct, REG_FB_INT + PLL_Channel);
+		TRY(Si5351_ReadRegister(Si5351_ConfigStruct, REG_FB_INT + PLL_Channel, &tmp));
 		tmp |= FB_INT_MASK;
-		Si5351_WriteRegister(Si5351_ConfigStruct, REG_FB_INT + PLL_Channel, tmp);
+		TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_FB_INT + PLL_Channel, tmp));
 	}
 }
 
-void Si5351_PLLReset(Si5351_ConfigTypeDef *Si5351_ConfigStruct, Si5351_PLLChannelTypeDef PLL_Channel)
+HAL_StatusTypeDef Si5351_PLLReset(Si5351_ConfigTypeDef *Si5351_ConfigStruct, Si5351_PLLChannelTypeDef PLL_Channel)
 {
 	uint8_t tmp;
 
 	//reset PLL
-	tmp = Si5351_ReadRegister(Si5351_ConfigStruct, REG_PLL_RESET);
+	TRY(Si5351_ReadRegister(Si5351_ConfigStruct, REG_PLL_RESET, &tmp));
 	if (PLL_Channel == PLL_A)
 	{
 		tmp |= PLLA_RESET_MASK;
 	} else {
 		tmp |= PLLB_RESET_MASK;
 	}
-	Si5351_WriteRegister(Si5351_ConfigStruct, REG_PLL_RESET, tmp);
+	TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_PLL_RESET, tmp));
 }
 
-void Si5351_PLLSimultaneousReset(Si5351_ConfigTypeDef *Si5351_ConfigStruct)
+HAL_StatusTypeDef Si5351_PLLSimultaneousReset(Si5351_ConfigTypeDef *Si5351_ConfigStruct)
 {
 	uint8_t tmp;
 
 	//reset PLL
-	tmp = Si5351_ReadRegister(Si5351_ConfigStruct, REG_PLL_RESET);
+	TRY(Si5351_ReadRegister(Si5351_ConfigStruct, REG_PLL_RESET, &tmp));
 	tmp |= PLLA_RESET_MASK | PLLB_RESET_MASK;
-	Si5351_WriteRegister(Si5351_ConfigStruct, REG_PLL_RESET, tmp);
+	TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_PLL_RESET, tmp));
 }
 
-void Si5351_SSConfig(Si5351_ConfigTypeDef *Si5351_ConfigStruct)
+HAL_StatusTypeDef Si5351_SSConfig(Si5351_ConfigTypeDef *Si5351_ConfigStruct)
 {
 	uint8_t tmp;
 	uint32_t SSUDP, SSUP_P1, SSUP_P2, SSUP_P3, SSDN_P1, SSDN_P2, SSDN_P3;
@@ -318,22 +346,22 @@ void Si5351_SSConfig(Si5351_ConfigTypeDef *Si5351_ConfigStruct)
 			(((Si5351_ConfigStruct->PLL[0].PLL_Multiplier_Integer & 0x01) == 0)
 					& (Si5351_ConfigStruct->PLL[0].PLL_Multiplier_Numerator == 0)) )
 	{
-		tmp = Si5351_ReadRegister(Si5351_ConfigStruct, REG_SSC_EN);
+		TRY(Si5351_ReadRegister(Si5351_ConfigStruct, REG_SSC_EN, &tmp));
 		tmp &= ~SSC_EN_MASK;
-		Si5351_WriteRegister(Si5351_ConfigStruct, REG_SSC_EN, tmp);
+		TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_SSC_EN, tmp));
 	}
 
 	//set default value of SS_NCLK - spread spectrum reserved register
-	tmp = Si5351_ReadRegister(Si5351_ConfigStruct, REG_SS_NCLK);
+	TRY(Si5351_ReadRegister(Si5351_ConfigStruct, REG_SS_NCLK, &tmp));
 	tmp &= ~SS_NCLK_MASK;
 	tmp |= SS_NCLK_MASK & (Si5351_ConfigStruct->SS.SS_NCLK);
-	Si5351_WriteRegister(Si5351_ConfigStruct, REG_SS_NCLK, tmp);
+	TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_SS_NCLK, tmp));
 
 	//set SS mode
-	tmp = Si5351_ReadRegister(Si5351_ConfigStruct, REG_SSC_MODE);
+	TRY(Si5351_ReadRegister(Si5351_ConfigStruct, REG_SSC_MODE, &tmp));
 	tmp &= ~SSC_MODE_MASK;
 	tmp |= SSC_MODE_MASK & Si5351_ConfigStruct->SS.SS_Mode;
-	Si5351_WriteRegister(Si5351_ConfigStruct, REG_SSC_MODE, tmp);
+	TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_SSC_MODE, tmp));
 
 	//set SSUDP parameter
 	if (Si5351_ConfigStruct->PLL[0].PLL_Clock_Source == PLL_Clock_Source_CLKIN)
@@ -345,11 +373,11 @@ void Si5351_SSConfig(Si5351_ConfigTypeDef *Si5351_ConfigStruct)
 
 	//set SSUDP parameter
 	tmp = (uint8_t) SSUDP;
-	Si5351_WriteRegister(Si5351_ConfigStruct, REG_SSUDP_0_7, tmp);
-	tmp = Si5351_ReadRegister(Si5351_ConfigStruct, REG_SSUDP_8_11);
+	TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_SSUDP_0_7, tmp));
+	TRY(Si5351_ReadRegister(Si5351_ConfigStruct, REG_SSUDP_8_11, &tmp));
 	tmp &= ~SSUDP_8_11_MASK;
 	tmp |= (uint8_t) (SSUDP_8_11_MASK & ((SSUDP >> 8) << 4));
-	Si5351_WriteRegister(Si5351_ConfigStruct, REG_SSUDP_8_11, tmp);
+	TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_SSUDP_8_11, tmp));
 
 	//calculate SSUP and SSDN parameters
 	if (Si5351_ConfigStruct->SS.SS_Mode == SS_Mode_CenterSpread)
@@ -388,93 +416,93 @@ void Si5351_SSConfig(Si5351_ConfigTypeDef *Si5351_ConfigStruct)
 
 	//write SSUP parameter P1
 	tmp = (uint8_t) SSUP_P1;
-	Si5351_WriteRegister(Si5351_ConfigStruct, REG_SSUP_P1_0_7, tmp);
-	tmp = Si5351_ReadRegister(Si5351_ConfigStruct, REG_SSUP_P1_8_11);
+	TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_SSUP_P1_0_7, tmp));
+	TRY(Si5351_ReadRegister(Si5351_ConfigStruct, REG_SSUP_P1_8_11, &tmp));
 	tmp &= ~SSUP_P1_8_11_MASK;
 	tmp |= (uint8_t)(SSUP_P1_8_11_MASK & (SSUP_P1 >> 8));
-	Si5351_WriteRegister(Si5351_ConfigStruct, REG_SSUP_P1_8_11, tmp);
+	TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_SSUP_P1_8_11, tmp));
 
 	//write SSUP parameter P2
 	tmp = (uint8_t) SSUP_P2;
-	Si5351_WriteRegister(Si5351_ConfigStruct, REG_SSUP_P2_0_7, tmp);
-	tmp = Si5351_ReadRegister(Si5351_ConfigStruct, REG_SSUP_P2_8_14);
+	TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_SSUP_P2_0_7, tmp));
+	TRY(Si5351_ReadRegister(Si5351_ConfigStruct, REG_SSUP_P2_8_14, &tmp));
 	tmp &= ~SSUP_P2_8_14_MASK;
 	tmp |= (uint8_t)(SSUP_P2_8_14_MASK & (SSUP_P2 >> 8));
-	Si5351_WriteRegister(Si5351_ConfigStruct, REG_SSUP_P2_8_14, tmp);
+	TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_SSUP_P2_8_14, tmp));
 
 	//write SSUP parameter P3
 	tmp = (uint8_t) SSUP_P3;
-	Si5351_WriteRegister(Si5351_ConfigStruct, REG_SSUP_P3_0_7, tmp);
-	tmp = Si5351_ReadRegister(Si5351_ConfigStruct, REG_SSUP_P3_8_14);
+	TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_SSUP_P3_0_7, tmp));
+	TRY(Si5351_ReadRegister(Si5351_ConfigStruct, REG_SSUP_P3_8_14, &tmp));
 	tmp &= ~SSUP_P3_8_14_MASK;
 	tmp |= (uint8_t)(SSUP_P3_8_14_MASK & (SSUP_P3 >> 8));
-	Si5351_WriteRegister(Si5351_ConfigStruct, REG_SSUP_P3_8_14, tmp);
+	TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_SSUP_P3_8_14, tmp));
 
 	//write SSDN parameter P1
 	tmp = (uint8_t) SSDN_P1;
-	Si5351_WriteRegister(Si5351_ConfigStruct, REG_SSDN_P1_0_7, tmp);
-	tmp = Si5351_ReadRegister(Si5351_ConfigStruct, REG_SSDN_P1_8_11);
+	TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_SSDN_P1_0_7, tmp));
+	TRY(Si5351_ReadRegister(Si5351_ConfigStruct, REG_SSDN_P1_8_11, &tmp));
 	tmp &= ~SSDN_P1_8_11_MASK;
 	tmp |= (uint8_t)(SSDN_P1_8_11_MASK & (SSDN_P1 >> 8));
-	Si5351_WriteRegister(Si5351_ConfigStruct, REG_SSDN_P1_8_11, tmp);
+	TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_SSDN_P1_8_11, tmp));
 
 	//write SSDN parameter P2
 	tmp = (uint8_t) SSDN_P2;
-	Si5351_WriteRegister(Si5351_ConfigStruct, REG_SSDN_P2_0_7, tmp);
-	tmp = Si5351_ReadRegister(Si5351_ConfigStruct, REG_SSDN_P2_8_14);
+	TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_SSDN_P2_0_7, tmp));
+	TRY(Si5351_ReadRegister(Si5351_ConfigStruct, REG_SSDN_P2_8_14, &tmp));
 	tmp &= ~SSDN_P2_8_14_MASK;
 	tmp |= (uint8_t)(SSDN_P2_8_14_MASK & (SSDN_P2 >> 8));
-	Si5351_WriteRegister(Si5351_ConfigStruct, REG_SSDN_P2_8_14, tmp);
+	TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_SSDN_P2_8_14, tmp));
 
 	//write SSDN parameter P3
 	tmp = (uint8_t) SSDN_P3;
-	Si5351_WriteRegister(Si5351_ConfigStruct, REG_SSDN_P3_0_7, tmp);
-	tmp = Si5351_ReadRegister(Si5351_ConfigStruct, REG_SSDN_P3_8_14);
+	TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_SSDN_P3_0_7, tmp));
+	TRY(Si5351_ReadRegister(Si5351_ConfigStruct, REG_SSDN_P3_8_14, &tmp));
 	tmp &= ~SSDN_P3_8_14_MASK;
 	tmp |= (uint8_t)(SSDN_P3_8_14_MASK & (SSDN_P3 >> 8));
-	Si5351_WriteRegister(Si5351_ConfigStruct, REG_SSDN_P3_8_14, tmp);
+	TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_SSDN_P3_8_14, tmp));
 
 	//turn on SS if it should be enabled
 	if ((Si5351_ConfigStruct->SS.SS_Enable == ON)
 			& (((Si5351_ConfigStruct->PLL[0].PLL_Multiplier_Integer & 0x01) != 0)
 					| (Si5351_ConfigStruct->PLL[0].PLL_Multiplier_Numerator != 0)))
 	{
-		tmp = Si5351_ReadRegister(Si5351_ConfigStruct, REG_SSC_EN);
+		TRY(Si5351_ReadRegister(Si5351_ConfigStruct, REG_SSC_EN, &tmp));
 		tmp |= SSC_EN_MASK;
-		Si5351_WriteRegister(Si5351_ConfigStruct, REG_SSC_EN, tmp);
+		TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_SSC_EN, tmp));
 	}
 }
 
-void Si5351_MSConfig(Si5351_ConfigTypeDef *Si5351_ConfigStruct, Si5351_MSChannelTypeDef MS_Channel)
+HAL_StatusTypeDef Si5351_MSConfig(Si5351_ConfigTypeDef *Si5351_ConfigStruct, Si5351_MSChannelTypeDef MS_Channel)
 {
 	uint8_t tmp;
 	uint32_t MS_P1, MS_P2, MS_P3;
 
 	//configure MultiSynth clock source
-	tmp = Si5351_ReadRegister(Si5351_ConfigStruct, REG_MS_SRC + MS_Channel);
+	TRY(Si5351_ReadRegister(Si5351_ConfigStruct, REG_MS_SRC + MS_Channel, &tmp));
 	tmp &= ~MS_SRC_MASK;
 	if (Si5351_ConfigStruct->MS[MS_Channel].MS_Clock_Source == MS_Clock_Source_PLLB)
 	{
 		tmp |= MS_SRC_MASK;
 	}
-	Si5351_WriteRegister(Si5351_ConfigStruct, REG_MS_SRC + MS_Channel, tmp);
+	TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_MS_SRC + MS_Channel, tmp));
 
 	if (MS_Channel <= MS5) //configuration is simpler for MS6 and 7 since they are integer-only
 	{
 		//if next value not in even integer mode or if divider is not equal to 4, disable DIVBY4
 		if ((Si5351_ConfigStruct->MS[MS_Channel].MS_Divider_Integer != 4)|(Si5351_ConfigStruct->MS[MS_Channel].MS_Divider_Numerator != 0))
 		{
-			tmp = Si5351_ReadRegister(Si5351_ConfigStruct, REG_MS_DIVBY4 + 8 * MS_Channel);
+			TRY(Si5351_ReadRegister(Si5351_ConfigStruct, REG_MS_DIVBY4 + 8 * MS_Channel, &tmp));
 			tmp &= ~MS_DIVBY4_MASK;
-			Si5351_WriteRegister(Si5351_ConfigStruct, REG_MS_DIVBY4 + 8 * MS_Channel, tmp);
+			TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_MS_DIVBY4 + 8 * MS_Channel, tmp));
 		}
 
 		//if next value not in even integer mode or SS enabled, disable integer mode
 		if ((Si5351_ConfigStruct->MS[MS_Channel].MS_Divider_Numerator != 0)|((Si5351_ConfigStruct->MS[MS_Channel].MS_Divider_Integer & 0x01) != 0)|(Si5351_ConfigStruct->SS.SS_Enable == ON))
 		{
-			tmp = Si5351_ReadRegister(Si5351_ConfigStruct, REG_MS_INT + MS_Channel);
+			TRY(Si5351_ReadRegister(Si5351_ConfigStruct, REG_MS_INT + MS_Channel, &tmp));
 			tmp &= ~MS_INT_MASK;
-			Si5351_WriteRegister(Si5351_ConfigStruct, REG_MS_INT + MS_Channel, tmp);
+			TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_MS_INT + MS_Channel, tmp));
 		}
 
 		//set new divider value
@@ -487,45 +515,45 @@ void Si5351_MSConfig(Si5351_ConfigTypeDef *Si5351_ConfigStruct, Si5351_MSChannel
 		MS_P3 = Si5351_ConfigStruct->MS[MS_Channel].MS_Divider_Denominator;
 
 		tmp = (uint8_t) MS_P1;
-		Si5351_WriteRegister(Si5351_ConfigStruct, REG_MS_P1_0_7 + 8 * MS_Channel, tmp);
+		TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_MS_P1_0_7 + 8 * MS_Channel, tmp));
 		tmp = (uint8_t) (MS_P1 >> 8);
-		Si5351_WriteRegister(Si5351_ConfigStruct, REG_MS_P1_8_15 + 8 * MS_Channel, tmp);
-		tmp = Si5351_ReadRegister(Si5351_ConfigStruct, REG_MS_P1_16_17);
+		TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_MS_P1_8_15 + 8 * MS_Channel, tmp));
+		TRY(Si5351_ReadRegister(Si5351_ConfigStruct, REG_MS_P1_16_17, &tmp));
 		tmp &= ~MS_P1_16_17_MASK;
 		tmp |= (uint8_t) (MS_P1_16_17_MASK & (MS_P1 >> 16));
-		Si5351_WriteRegister(Si5351_ConfigStruct, REG_MS_P1_16_17 + 8 * MS_Channel, tmp);
+		TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_MS_P1_16_17 + 8 * MS_Channel, tmp));
 
 		tmp = (uint8_t) MS_P2;
-		Si5351_WriteRegister(Si5351_ConfigStruct, REG_MS_P2_0_7 + 8 * MS_Channel, tmp);
+		TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_MS_P2_0_7 + 8 * MS_Channel, tmp));
 		tmp = (uint8_t) (MS_P2 >> 8);
-		Si5351_WriteRegister(Si5351_ConfigStruct, REG_MS_P2_8_15 + 8 * MS_Channel, tmp);
+		TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_MS_P2_8_15 + 8 * MS_Channel, tmp));
 		Si5351_ReadRegister(Si5351_ConfigStruct, REG_MS_P2_16_19 + 8 * MS_Channel);
 		tmp &= ~MS_P2_16_19_MASK;
 		tmp |= (uint8_t) (MS_P2_16_19_MASK & (MS_P2 >> 16));
-		Si5351_WriteRegister(Si5351_ConfigStruct, REG_MS_P2_16_19 + 8 * MS_Channel, tmp);
+		TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_MS_P2_16_19 + 8 * MS_Channel, tmp));
 
 		tmp = (uint8_t) MS_P3;
-		Si5351_WriteRegister(Si5351_ConfigStruct, REG_MS_P3_0_7 + 8 * MS_Channel, tmp);
+		TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_MS_P3_0_7 + 8 * MS_Channel, tmp));
 		tmp = (uint8_t) (MS_P3 >> 8);
-		Si5351_WriteRegister(Si5351_ConfigStruct, REG_MS_P3_8_15 + 8 * MS_Channel, tmp);
-		tmp = Si5351_ReadRegister(Si5351_ConfigStruct, REG_MS_P3_16_19 + 8 * MS_Channel);
+		TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_MS_P3_8_15 + 8 * MS_Channel, tmp));
+		TRY(Si5351_ReadRegister(Si5351_ConfigStruct, REG_MS_P3_16_19 + 8 * MS_Channel, &tmp));
 		tmp &= ~MS_P3_16_19_MASK;
 		tmp |= (uint8_t) (MS_P3_16_19_MASK & ((MS_P3 >> 16) << 4));
-		Si5351_WriteRegister(Si5351_ConfigStruct, REG_MS_P3_16_19 + 8 * MS_Channel, tmp);
+		TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_MS_P3_16_19 + 8 * MS_Channel, tmp));
 
 		//if next value is even integer and SS not enabled, enable integer mode
 		if ((Si5351_ConfigStruct->MS[MS_Channel].MS_Divider_Numerator == 0) & ((Si5351_ConfigStruct->MS[MS_Channel].MS_Divider_Integer & 0x01) == 0) & (Si5351_ConfigStruct->SS.SS_Enable == OFF))
 		{
-			tmp = Si5351_ReadRegister(Si5351_ConfigStruct, REG_MS_INT + MS_Channel);
+			TRY(Si5351_ReadRegister(Si5351_ConfigStruct, REG_MS_INT + MS_Channel, &tmp));
 			tmp |= MS_INT_MASK;
-			Si5351_WriteRegister(Si5351_ConfigStruct, REG_MS_INT + MS_Channel, tmp);
+			TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_MS_INT + MS_Channel, tmp));
 
 			//if next value in integer mode and if divider is equal to 4, enable DIVBY4
 			if (Si5351_ConfigStruct->MS[MS_Channel].MS_Divider_Integer == 4)
 			{
-				tmp = Si5351_ReadRegister(Si5351_ConfigStruct, REG_MS_DIVBY4 + 8 * MS_Channel);
+				TRY(Si5351_ReadRegister(Si5351_ConfigStruct, REG_MS_DIVBY4 + 8 * MS_Channel, &tmp));
 				tmp |= MS_DIVBY4_MASK;
-				Si5351_WriteRegister(Si5351_ConfigStruct, REG_MS_DIVBY4 + 8 * MS_Channel, tmp);
+				TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_MS_DIVBY4 + 8 * MS_Channel, tmp));
 			}
 		}
 	} else {
@@ -535,7 +563,7 @@ void Si5351_MSConfig(Si5351_ConfigTypeDef *Si5351_ConfigStruct, Si5351_MSChannel
 	}
 }
 
-void Si5351_CLKPowerCmd(Si5351_ConfigTypeDef *Si5351_ConfigStruct, Si5351_CLKChannelTypeDef CLK_Channel)
+HAL_StatusTypeDef Si5351_CLKPowerCmd(Si5351_ConfigTypeDef *Si5351_ConfigStruct, Si5351_CLKChannelTypeDef CLK_Channel)
 {
 	uint8_t tmp, tmp_mask;
 
@@ -547,7 +575,7 @@ void Si5351_CLKPowerCmd(Si5351_ConfigTypeDef *Si5351_ConfigStruct, Si5351_CLKCha
 	Si5351_WriteRegister(Si5351_ConfigStruct, REG_CLK_DIS_STATE + (CLK_Channel >> 2), tmp);
 
 	//set OEB pin
-	tmp = Si5351_ReadRegister(Si5351_ConfigStruct, REG_CLK_OEB);
+	TRY(Si5351_ReadRegister(Si5351_ConfigStruct, REG_CLK_OEB, &tmp));
 	tmp_mask = 1 << CLK_Channel;
 	tmp &= ~tmp_mask;
 	if (Si5351_ConfigStruct->CLK[CLK_Channel].CLK_Use_OEB_Pin == OFF)
@@ -558,84 +586,84 @@ void Si5351_CLKPowerCmd(Si5351_ConfigTypeDef *Si5351_ConfigStruct, Si5351_CLKCha
 	if (Si5351_ConfigStruct->CLK[CLK_Channel].CLK_Enable == OFF) //disable clock
 	{
 		//power down the clock
-		tmp = Si5351_ReadRegister(Si5351_ConfigStruct, REG_CLK_EN);
+		TRY(Si5351_ReadRegister(Si5351_ConfigStruct, REG_CLK_EN, &tmp));
 		tmp |= 1 << CLK_Channel;
-		Si5351_WriteRegister(Si5351_ConfigStruct, REG_CLK_EN, tmp);
+		TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_CLK_EN, tmp));
 	}
 
 	if (Si5351_ConfigStruct->CLK[CLK_Channel].CLK_PowerDown == ON) //power down clock
 	{
 		//power down output driver
-		tmp = Si5351_ReadRegister(Si5351_ConfigStruct, REG_CLK_PDN + CLK_Channel);
+		TRY(Si5351_ReadRegister(Si5351_ConfigStruct, REG_CLK_PDN + CLK_Channel, &tmp));
 		tmp |= CLK_PDN_MASK;
-		Si5351_WriteRegister(Si5351_ConfigStruct, REG_CLK_PDN + CLK_Channel, tmp);
+		TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_CLK_PDN + CLK_Channel, tmp));
 	}
 
 	if (Si5351_ConfigStruct->CLK[CLK_Channel].CLK_PowerDown == OFF) //power up clock
 	{
 		//power up output driver
-		tmp = Si5351_ReadRegister(Si5351_ConfigStruct, REG_CLK_PDN + CLK_Channel);
+		TRY(Si5351_ReadRegister(Si5351_ConfigStruct, REG_CLK_PDN + CLK_Channel, &tmp));
 		tmp &= ~CLK_PDN_MASK;
-		Si5351_WriteRegister(Si5351_ConfigStruct, REG_CLK_PDN + CLK_Channel, tmp);
+		TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_CLK_PDN + CLK_Channel, tmp));
 	}
 
 	if (Si5351_ConfigStruct->CLK[CLK_Channel].CLK_Enable == ON) //enable clock
 	{
 		//power up the clock
-		tmp = Si5351_ReadRegister(Si5351_ConfigStruct, REG_CLK_EN);
+		TRY(Si5351_ReadRegister(Si5351_ConfigStruct, REG_CLK_EN, &tmp));
 		tmp &= ~(1 << CLK_Channel);
-		Si5351_WriteRegister(Si5351_ConfigStruct, REG_CLK_EN, tmp);
+		TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_CLK_EN, tmp));
 	}
 }
 
-void Si5351_CLKConfig(Si5351_ConfigTypeDef *Si5351_ConfigStruct, Si5351_CLKChannelTypeDef CLK_Channel)
+HAL_StatusTypeDef Si5351_CLKConfig(Si5351_ConfigTypeDef *Si5351_ConfigStruct, Si5351_CLKChannelTypeDef CLK_Channel)
 {
 	uint8_t tmp, tmp_mask;
 
 	//set CLK source clock
-	tmp = Si5351_ReadRegister(Si5351_ConfigStruct, REG_CLK_SRC + CLK_Channel);
+	TRY(Si5351_ReadRegister(Si5351_ConfigStruct, REG_CLK_SRC + CLK_Channel, &tmp));
 	tmp &= ~CLK_SRC_MASK;
 	tmp |= CLK_SRC_MASK & Si5351_ConfigStruct->CLK[CLK_Channel].CLK_Clock_Source;
-	Si5351_WriteRegister(Si5351_ConfigStruct, REG_CLK_SRC + CLK_Channel, tmp);
+	TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_CLK_SRC + CLK_Channel, tmp));
 
 	//set CLK inversion
-	tmp = Si5351_ReadRegister(Si5351_ConfigStruct, REG_CLK_INV + CLK_Channel);
+	TRY(Si5351_ReadRegister(Si5351_ConfigStruct, REG_CLK_INV + CLK_Channel, &tmp));
 	tmp &= ~CLK_INV_MASK;
 	if (Si5351_ConfigStruct->CLK[CLK_Channel].CLK_Invert == ON)
 	{
 		tmp |= CLK_INV_MASK;
 	}
-	Si5351_WriteRegister(Si5351_ConfigStruct, REG_CLK_INV + CLK_Channel, tmp);
+	TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_CLK_INV + CLK_Channel, tmp));
 
 	//set CLK current drive
-	tmp = Si5351_ReadRegister(Si5351_ConfigStruct, REG_CLK_IDRV + CLK_Channel);
+	TRY(Si5351_ReadRegister(Si5351_ConfigStruct, REG_CLK_IDRV + CLK_Channel, &tmp));
 	tmp &= ~CLK_IDRV_MASK;
 	tmp |= CLK_IDRV_MASK & Si5351_ConfigStruct->CLK[CLK_Channel].CLK_I_Drv;
-	Si5351_WriteRegister(Si5351_ConfigStruct, REG_CLK_IDRV + CLK_Channel, tmp);
+	TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_CLK_IDRV + CLK_Channel, tmp));
 
 	if (CLK_Channel <= CLK5) //CLK6 and 7 are integer only, which causes several limitations
 	{
 		//set CLK phase offset
 		tmp = CLK_PHOFF_MASK & (Si5351_ConfigStruct->CLK[CLK_Channel].CLK_QuarterPeriod_Offset);
-		Si5351_WriteRegister(Si5351_ConfigStruct, REG_CLK_PHOFF + CLK_Channel, tmp);
+		TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_CLK_PHOFF + CLK_Channel, tmp));
 		//set Rx divider
-		tmp = Si5351_ReadRegister(Si5351_ConfigStruct, REG_CLK_R_DIV + CLK_Channel * CLK_R_DIV_STEP);
+		TRY(Si5351_ReadRegister(Si5351_ConfigStruct, REG_CLK_R_DIV + CLK_Channel * CLK_R_DIV_STEP, &tmp));
 		tmp &= ~CLK_R_DIV_MASK;
 		tmp |= CLK_R_DIV_MASK & (Si5351_ConfigStruct->CLK[CLK_Channel].CLK_R_Div);
-		Si5351_WriteRegister(Si5351_ConfigStruct, REG_CLK_R_DIV + CLK_Channel * CLK_R_DIV_STEP, tmp);
+		TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_CLK_R_DIV + CLK_Channel * CLK_R_DIV_STEP, tmp));
 	} else {
 		//CLK6 and CLK7 have no fractional mode, so they lack the phase offset function
 
 		//set Rx divider
 		tmp_mask = CLK_R67_DIV_MASK << ((CLK_Channel-CLK6) << 2); //shift mask left by 4 if CLK7
-		tmp = Si5351_ReadRegister(Si5351_ConfigStruct, REG_CLK_R67_DIV);
+		TRY(Si5351_ReadRegister(Si5351_ConfigStruct, REG_CLK_R67_DIV, &tmp));
 		tmp &= ~tmp_mask;
 		tmp |= tmp_mask & ((Si5351_ConfigStruct->CLK[CLK_Channel].CLK_R_Div >> 4) << ((CLK_Channel-CLK6) << 2));
-		Si5351_WriteRegister(Si5351_ConfigStruct, REG_CLK_R67_DIV, tmp);
+		TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_CLK_R67_DIV, tmp));
 	}
 }
 
-int Si5351_Init(Si5351_ConfigTypeDef *Si5351_ConfigStruct)
+HAL_StatusTypeDef Si5351_Init(Si5351_ConfigTypeDef *Si5351_ConfigStruct)
 {
 	uint32_t timeout = SI5351_TIMEOUT;
 	uint8_t i;
@@ -644,7 +672,7 @@ int Si5351_Init(Si5351_ConfigTypeDef *Si5351_ConfigStruct)
 	while (Si5351_CheckStatusBit(Si5351_ConfigStruct, StatusBit_SysInit))
 	{
 		timeout--;
-		if (timeout==0) return 1; //return 1 if initialization timed out
+		if (timeout==0) return HAL_TIMEOUT; //return 1 if initialization timed out
 	}
 
 	//configure oscillator, fanout, interrupts, VCXO
@@ -677,7 +705,7 @@ int Si5351_Init(Si5351_ConfigTypeDef *Si5351_ConfigStruct)
 	while (Si5351_CheckStatusBit(Si5351_ConfigStruct, StatusBit_SysInit | StatusBit_PLLA | StatusBit_PLLB))
 	{
 		timeout--;
-		if (timeout==0) return 1; //return 1 if problem with any PLL
+		if (timeout==0) return HAL_TIMEOUT; //return 1 if problem with any PLL
 	}
 
 	//clear sticky bits
@@ -688,7 +716,7 @@ int Si5351_Init(Si5351_ConfigTypeDef *Si5351_ConfigStruct)
 		while (Si5351_CheckStatusBit(Si5351_ConfigStruct, StatusBit_CLKIN))
 		{
 			timeout--;
-			if (timeout==0) return 1; //return 1 if initialization timed out
+			if (timeout==0) return HAL_TIMEOUT; //return 1 if initialization timed out
 		}
 		//clear CLKIN sticky bit
 		Si5351_ClearStickyBit(Si5351_ConfigStruct, StatusBit_CLKIN);
@@ -699,7 +727,7 @@ int Si5351_Init(Si5351_ConfigTypeDef *Si5351_ConfigStruct)
 		while (Si5351_CheckStatusBit(Si5351_ConfigStruct, StatusBit_XTAL))
 		{
 			timeout--;
-			if (timeout==0) return 1; //return 1 if initialization timed out
+			if (timeout==0) return HAL_TIMEOUT; //return 1 if initialization timed out
 		}
 		//clear XTAL sticky bit
 		Si5351_ClearStickyBit(Si5351_ConfigStruct, StatusBit_XTAL);
@@ -711,5 +739,5 @@ int Si5351_Init(Si5351_ConfigTypeDef *Si5351_ConfigStruct)
 		Si5351_CLKPowerCmd(Si5351_ConfigStruct, i);
 	}
 
-	return 0;
+	return HAL_OK;
 }

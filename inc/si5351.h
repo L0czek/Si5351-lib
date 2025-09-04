@@ -26,7 +26,7 @@
 #ifndef SI5351_H_
 #define SI5351_H_
 
-#include "stm32g4xx_hal_i2c.h"
+#include "stm32g4xx_hal.h"
 #define SI5351_I2C_ADDRESS		0xC0		//default I2C address of Si5351
 #define SI5351_I2C_PERIPHERAL	I2C1		//default I2C interface
 
