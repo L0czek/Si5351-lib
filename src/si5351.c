@@ -24,7 +24,7 @@
  */
 
 //put your I2C HAL library name here
-#include "stm32g4xx_hal.h"
+#include "stm32g4xx_hal_def.h"
 
 #include "si5351.h"
 
@@ -55,41 +55,13 @@ HAL_StatusTypeDef Si5351_ReadRegister(Si5351_ConfigTypeDef *cfg, uint8_t reg, ui
                             I2C_TIMEOUT);
 }
 
-#include "si5351.h"
-
-HAL_StatusTypeDef Si5351_WriteRegister(Si5351_ConfigTypeDef *Si5351_ConfigStruct,  uint8_t reg_address, uint8_t reg_data)
-{
-    return HAL_I2C_Mem_Write(
-        Si5351_ConfigStruct->I2Cx,
-        Si5351_ConfigStruct->HW_I2C_Address,
-        reg_address,
-        1,
-        &reg_data,
-        sizeof(reg_data),
-        I2C_TIMEOUT
-    );
-}
-
-HAL_StatusTypeDef Si5351_ReadRegister(Si5351_ConfigTypeDef *Si5351_ConfigStruct,  uint8_t reg_address, uint8_t *out)
-{
-    return HAL_I2C_Mem_Read(
-        Si5351_ConfigStruct->I2Cx,
-        Si5351_ConfigStruct->HW_I2C_Address,
-        reg_address,
-        1,
-        out,
-        sizeof(*out),
-        I2C_TIMEOUT
-    );
-}
-
 //set safe values in the config structure
 void Si5351_StructInit(Si5351_ConfigTypeDef *Si5351_ConfigStruct)
 {
 	uint8_t i;
 
 	Si5351_ConfigStruct->HW_I2C_Address = SI5351_I2C_ADDRESS;
-	Si5351_ConfigStruct->I2Cx = SI5351_I2C_PERIPHERAL;
+	Si5351_ConfigStruct->I2Cx = NULL;
 
 	Si5351_ConfigStruct->f_CLKIN = SI5351_CLKIN_FREQ;
 	Si5351_ConfigStruct->f_XTAL = SI5351_XTAL_FREQ;
@@ -184,24 +156,30 @@ HAL_StatusTypeDef Si5351_OSCConfig(Si5351_ConfigTypeDef *Si5351_ConfigStruct)
 	TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_VCXO_PARAM_8_15, tmp));
 	tmp = (uint8_t)((VCXO_Param>>16) & VCXO_PARAM_16_21_MASK);
 	TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_VCXO_PARAM_16_21, tmp));
+
+	return HAL_OK;
 }
 
-EnableState Si5351_CheckStatusBit(Si5351_ConfigTypeDef *Si5351_ConfigStruct, Si5351_StatusBitTypeDef StatusBit)
+HAL_StatusTypeDef Si5351_CheckStatusBit(Si5351_ConfigTypeDef *Si5351_ConfigStruct, Si5351_StatusBitTypeDef StatusBit, EnableState *out)
 {
 	uint8_t tmp;
 
 	TRY(Si5351_ReadRegister(Si5351_ConfigStruct, REG_DEV_STATUS, &tmp));
 	tmp &= StatusBit;
-	return tmp;
+	*out = tmp;
+
+    return HAL_OK;
 }
 
-EnableState Si5351_CheckStickyBit(Si5351_ConfigTypeDef *Si5351_ConfigStruct, Si5351_StatusBitTypeDef StatusBit)
+HAL_StatusTypeDef Si5351_CheckStickyBit(Si5351_ConfigTypeDef *Si5351_ConfigStruct, Si5351_StatusBitTypeDef StatusBit, EnableState *out)
 {
 	uint8_t tmp;
 
 	TRY(Si5351_ReadRegister(Si5351_ConfigStruct, REG_DEV_STICKY, &tmp));
 	tmp &= StatusBit;
-	return tmp;
+	*out = tmp;
+
+    return HAL_OK;
 }
 
 HAL_StatusTypeDef Si5351_InterruptConfig(Si5351_ConfigTypeDef *Si5351_ConfigStruct)
@@ -240,6 +218,8 @@ HAL_StatusTypeDef Si5351_InterruptConfig(Si5351_ConfigTypeDef *Si5351_ConfigStru
 	}
 
 	TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_INT_MASK, tmp));
+
+	return HAL_OK;
 }
 
 HAL_StatusTypeDef Si5351_ClearStickyBit(Si5351_ConfigTypeDef *Si5351_ConfigStruct, Si5351_StatusBitTypeDef StatusBit)
@@ -249,6 +229,8 @@ HAL_StatusTypeDef Si5351_ClearStickyBit(Si5351_ConfigTypeDef *Si5351_ConfigStruc
 	TRY(Si5351_ReadRegister(Si5351_ConfigStruct, REG_DEV_STICKY, &tmp));
 	tmp &= ~StatusBit;
 	TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_DEV_STICKY, tmp));
+
+	return HAL_OK;
 }
 
 HAL_StatusTypeDef Si5351_PLLConfig(Si5351_ConfigTypeDef *Si5351_ConfigStruct, Si5351_PLLChannelTypeDef PLL_Channel)
@@ -308,6 +290,8 @@ HAL_StatusTypeDef Si5351_PLLConfig(Si5351_ConfigTypeDef *Si5351_ConfigStruct, Si
 		tmp |= FB_INT_MASK;
 		TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_FB_INT + PLL_Channel, tmp));
 	}
+
+	return HAL_OK;
 }
 
 HAL_StatusTypeDef Si5351_PLLReset(Si5351_ConfigTypeDef *Si5351_ConfigStruct, Si5351_PLLChannelTypeDef PLL_Channel)
@@ -323,6 +307,8 @@ HAL_StatusTypeDef Si5351_PLLReset(Si5351_ConfigTypeDef *Si5351_ConfigStruct, Si5
 		tmp |= PLLB_RESET_MASK;
 	}
 	TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_PLL_RESET, tmp));
+
+	return HAL_OK;
 }
 
 HAL_StatusTypeDef Si5351_PLLSimultaneousReset(Si5351_ConfigTypeDef *Si5351_ConfigStruct)
@@ -333,6 +319,8 @@ HAL_StatusTypeDef Si5351_PLLSimultaneousReset(Si5351_ConfigTypeDef *Si5351_Confi
 	TRY(Si5351_ReadRegister(Si5351_ConfigStruct, REG_PLL_RESET, &tmp));
 	tmp |= PLLA_RESET_MASK | PLLB_RESET_MASK;
 	TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_PLL_RESET, tmp));
+
+	return HAL_OK;
 }
 
 HAL_StatusTypeDef Si5351_SSConfig(Si5351_ConfigTypeDef *Si5351_ConfigStruct)
@@ -471,6 +459,8 @@ HAL_StatusTypeDef Si5351_SSConfig(Si5351_ConfigTypeDef *Si5351_ConfigStruct)
 		tmp |= SSC_EN_MASK;
 		TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_SSC_EN, tmp));
 	}
+
+	return HAL_OK;
 }
 
 HAL_StatusTypeDef Si5351_MSConfig(Si5351_ConfigTypeDef *Si5351_ConfigStruct, Si5351_MSChannelTypeDef MS_Channel)
@@ -527,7 +517,8 @@ HAL_StatusTypeDef Si5351_MSConfig(Si5351_ConfigTypeDef *Si5351_ConfigStruct, Si5
 		TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_MS_P2_0_7 + 8 * MS_Channel, tmp));
 		tmp = (uint8_t) (MS_P2 >> 8);
 		TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_MS_P2_8_15 + 8 * MS_Channel, tmp));
-		Si5351_ReadRegister(Si5351_ConfigStruct, REG_MS_P2_16_19 + 8 * MS_Channel);
+        uint8_t ignored;
+		TRY(Si5351_ReadRegister(Si5351_ConfigStruct, REG_MS_P2_16_19 + 8 * MS_Channel, &ignored));
 		tmp &= ~MS_P2_16_19_MASK;
 		tmp |= (uint8_t) (MS_P2_16_19_MASK & (MS_P2 >> 16));
 		TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_MS_P2_16_19 + 8 * MS_Channel, tmp));
@@ -558,9 +549,11 @@ HAL_StatusTypeDef Si5351_MSConfig(Si5351_ConfigTypeDef *Si5351_ConfigStruct, Si5
 		}
 	} else {
 		//configure divider of Multisynth 6 and 7
-		Si5351_WriteRegister(Si5351_ConfigStruct, REG_MS67_P1 + (MS_Channel - MS6), (uint8_t)(Si5351_ConfigStruct->MS[MS_Channel].MS_Divider_Integer));
+		TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_MS67_P1 + (MS_Channel - MS6), (uint8_t)(Si5351_ConfigStruct->MS[MS_Channel].MS_Divider_Integer)));
 		//can be only even integers between 6 and 254, inclusive
 	}
+
+	return HAL_OK;
 }
 
 HAL_StatusTypeDef Si5351_CLKPowerCmd(Si5351_ConfigTypeDef *Si5351_ConfigStruct, Si5351_CLKChannelTypeDef CLK_Channel)
@@ -568,11 +561,11 @@ HAL_StatusTypeDef Si5351_CLKPowerCmd(Si5351_ConfigTypeDef *Si5351_ConfigStruct, 
 	uint8_t tmp, tmp_mask;
 
 	//set CLK disable state
-	tmp = Si5351_ReadRegister(Si5351_ConfigStruct, REG_CLK_DIS_STATE + (CLK_Channel >> 2)); //increment the address by 1 if CLKx>=CLK4
+	TRY(Si5351_ReadRegister(Si5351_ConfigStruct, REG_CLK_DIS_STATE + (CLK_Channel >> 2), &tmp)); //increment the address by 1 if CLKx>=CLK4
 	tmp_mask = CLK_DIS_STATE_MASK << ((CLK_Channel & 0x03)<<1); //shift the mask according to the selected channel
 	tmp &= ~tmp_mask;
 	tmp |= tmp_mask & ((Si5351_ConfigStruct->CLK[CLK_Channel].CLK_Disable_State) << ((CLK_Channel & 0x03)<<1));
-	Si5351_WriteRegister(Si5351_ConfigStruct, REG_CLK_DIS_STATE + (CLK_Channel >> 2), tmp);
+	TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_CLK_DIS_STATE + (CLK_Channel >> 2), tmp));
 
 	//set OEB pin
 	TRY(Si5351_ReadRegister(Si5351_ConfigStruct, REG_CLK_OEB, &tmp));
@@ -614,6 +607,8 @@ HAL_StatusTypeDef Si5351_CLKPowerCmd(Si5351_ConfigTypeDef *Si5351_ConfigStruct, 
 		tmp &= ~(1 << CLK_Channel);
 		TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_CLK_EN, tmp));
 	}
+
+	return HAL_OK;
 }
 
 HAL_StatusTypeDef Si5351_CLKConfig(Si5351_ConfigTypeDef *Si5351_ConfigStruct, Si5351_CLKChannelTypeDef CLK_Channel)
@@ -661,6 +656,8 @@ HAL_StatusTypeDef Si5351_CLKConfig(Si5351_ConfigTypeDef *Si5351_ConfigStruct, Si
 		tmp |= tmp_mask & ((Si5351_ConfigStruct->CLK[CLK_Channel].CLK_R_Div >> 4) << ((CLK_Channel-CLK6) << 2));
 		TRY(Si5351_WriteRegister(Si5351_ConfigStruct, REG_CLK_R67_DIV, tmp));
 	}
+
+	return HAL_OK;
 }
 
 HAL_StatusTypeDef Si5351_Init(Si5351_ConfigTypeDef *Si5351_ConfigStruct)
@@ -669,74 +666,82 @@ HAL_StatusTypeDef Si5351_Init(Si5351_ConfigTypeDef *Si5351_ConfigStruct)
 	uint8_t i;
 
 	//wait for the 5351 to initialize
-	while (Si5351_CheckStatusBit(Si5351_ConfigStruct, StatusBit_SysInit))
-	{
+	EnableState state = ON;
+	while(state) {
+		TRY(Si5351_CheckStatusBit(Si5351_ConfigStruct, StatusBit_SysInit, &state));
+
 		timeout--;
 		if (timeout==0) return HAL_TIMEOUT; //return 1 if initialization timed out
 	}
 
 	//configure oscillator, fanout, interrupts, VCXO
-	Si5351_OSCConfig(Si5351_ConfigStruct);
-	Si5351_InterruptConfig(Si5351_ConfigStruct);
+	TRY(Si5351_OSCConfig(Si5351_ConfigStruct));
+	TRY(Si5351_InterruptConfig(Si5351_ConfigStruct));
 
 	//configure PLLs
 	for (i=PLL_A; i<=PLL_B; i++)
 	{
-		Si5351_PLLConfig(Si5351_ConfigStruct, i);
-		Si5351_PLLReset(Si5351_ConfigStruct, i);
+		TRY(Si5351_PLLConfig(Si5351_ConfigStruct, i));
+		TRY(Si5351_PLLReset(Si5351_ConfigStruct, i));
 	}
 
 	//configure Spread Spectrum
-	Si5351_SSConfig(Si5351_ConfigStruct);
+	TRY(Si5351_SSConfig(Si5351_ConfigStruct));
 
 	//Configure Multisynths
 	for (i=MS0; i<=MS7; i++)
 	{
-		Si5351_MSConfig(Si5351_ConfigStruct, i);
+		TRY(Si5351_MSConfig(Si5351_ConfigStruct, i));
 	}
 
 	//configure outputs
 	for (i=CLK0; i<=CLK7; i++)
 	{
-		Si5351_CLKConfig(Si5351_ConfigStruct, i);
+		TRY(Si5351_CLKConfig(Si5351_ConfigStruct, i));
 	}
 
 	//wait for PLLs to lock
-	while (Si5351_CheckStatusBit(Si5351_ConfigStruct, StatusBit_SysInit | StatusBit_PLLA | StatusBit_PLLB))
-	{
+	state = ON;
+	while (state) {
+		TRY(Si5351_CheckStatusBit(Si5351_ConfigStruct, StatusBit_SysInit | StatusBit_PLLA | StatusBit_PLLB, &state));
+
 		timeout--;
 		if (timeout==0) return HAL_TIMEOUT; //return 1 if problem with any PLL
 	}
 
 	//clear sticky bits
-	Si5351_ClearStickyBit(Si5351_ConfigStruct, StatusBit_SysInit | StatusBit_PLLA | StatusBit_PLLB);
+	TRY(Si5351_ClearStickyBit(Si5351_ConfigStruct, StatusBit_SysInit | StatusBit_PLLA | StatusBit_PLLB));
 
 	if (Si5351_ConfigStruct->f_CLKIN != 0) //if CLKIN used, check it as well
 	{
-		while (Si5351_CheckStatusBit(Si5351_ConfigStruct, StatusBit_CLKIN))
-		{
+		state = ON;
+		while (state) {
+			TRY(Si5351_CheckStatusBit(Si5351_ConfigStruct, StatusBit_CLKIN, &state));
+
 			timeout--;
 			if (timeout==0) return HAL_TIMEOUT; //return 1 if initialization timed out
 		}
 		//clear CLKIN sticky bit
-		Si5351_ClearStickyBit(Si5351_ConfigStruct, StatusBit_CLKIN);
+		TRY(Si5351_ClearStickyBit(Si5351_ConfigStruct, StatusBit_CLKIN));
 	}
 
 	if (Si5351_ConfigStruct->f_XTAL != 0) //if XTAL used, check it as well
 	{
-		while (Si5351_CheckStatusBit(Si5351_ConfigStruct, StatusBit_XTAL))
-		{
+		state = ON;
+		while (state) {
+			TRY(Si5351_CheckStatusBit(Si5351_ConfigStruct, StatusBit_XTAL, &state));
+
 			timeout--;
 			if (timeout==0) return HAL_TIMEOUT; //return 1 if initialization timed out
 		}
 		//clear XTAL sticky bit
-		Si5351_ClearStickyBit(Si5351_ConfigStruct, StatusBit_XTAL);
+		TRY(Si5351_ClearStickyBit(Si5351_ConfigStruct, StatusBit_XTAL));
 	}
 
 	//power on or off the outputs
 	for (i=CLK0; i<=CLK7; i++)
 	{
-		Si5351_CLKPowerCmd(Si5351_ConfigStruct, i);
+		TRY(Si5351_CLKPowerCmd(Si5351_ConfigStruct, i));
 	}
 
 	return HAL_OK;

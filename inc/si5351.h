@@ -27,6 +27,7 @@
 #define SI5351_H_
 
 #include "stm32g4xx_hal.h"
+#include "stm32g4xx_hal_def.h"
 #define SI5351_I2C_ADDRESS		0xC0		//default I2C address of Si5351
 #define SI5351_I2C_PERIPHERAL	I2C1		//default I2C interface
 
@@ -497,28 +498,50 @@ typedef enum
 
 //these write to and read from a Si5351 register, for porting
 //purposes, these functions should be the only ones which should need edits
-int Si5351_WriteRegister(Si5351_ConfigTypeDef *Si5351_ConfigStruct,  uint8_t reg_address, uint8_t reg_data);
-uint8_t Si5351_ReadRegister(Si5351_ConfigTypeDef *Si5351_ConfigStruct,  uint8_t reg_address);
+
+HAL_StatusTypeDef Si5351_WriteRegister(Si5351_ConfigTypeDef *Si5351_ConfigStruct,
+                                       uint8_t reg_address,
+                                       uint8_t reg_data);
+
+HAL_StatusTypeDef Si5351_ReadRegister(Si5351_ConfigTypeDef *Si5351_ConfigStruct,
+                                      uint8_t reg_address,
+                                      uint8_t *out);
 
 void Si5351_StructInit(Si5351_ConfigTypeDef *Si5351_ConfigStruct);
 
-void Si5351_OSCConfig(Si5351_ConfigTypeDef *Si5351_ConfigStruct);
+HAL_StatusTypeDef Si5351_OSCConfig(Si5351_ConfigTypeDef *Si5351_ConfigStruct);
 
-EnableState Si5351_CheckStatusBit(Si5351_ConfigTypeDef *Si5351_ConfigStruct, Si5351_StatusBitTypeDef StatusBit);
-EnableState Si5351_CheckStickyBit(Si5351_ConfigTypeDef *Si5351_ConfigStruct, Si5351_StatusBitTypeDef StatusBit);
-void Si5351_InterruptConfig(Si5351_ConfigTypeDef *Si5351_ConfigStruct);
-void Si5351_ClearStickyBit(Si5351_ConfigTypeDef *Si5351_ConfigStruct, Si5351_StatusBitTypeDef StatusBit);
+HAL_StatusTypeDef Si5351_CheckStatusBit(Si5351_ConfigTypeDef *Si5351_ConfigStruct,
+                                  Si5351_StatusBitTypeDef StatusBit, EnableState *);
 
-void Si5351_PLLConfig(Si5351_ConfigTypeDef *Si5351_ConfigStruct, Si5351_PLLChannelTypeDef PLL_Channel);
-void Si5351_PLLReset(Si5351_ConfigTypeDef *Si5351_ConfigStruct, Si5351_PLLChannelTypeDef PLL_Channel);
-void Si5351_PLLSimultaneousReset(Si5351_ConfigTypeDef *Si5351_ConfigStruct);
+HAL_StatusTypeDef Si5351_CheckStickyBit(Si5351_ConfigTypeDef *Si5351_ConfigStruct,
+                                  Si5351_StatusBitTypeDef StatusBit, EnableState *);
 
-void Si5351_SSConfig(Si5351_ConfigTypeDef *Si5351_ConfigStruct);
+HAL_StatusTypeDef Si5351_InterruptConfig(Si5351_ConfigTypeDef *Si5351_ConfigStruct);
 
-void Si5351_MSConfig(Si5351_ConfigTypeDef *Si5351_ConfigStruct, Si5351_MSChannelTypeDef MS_Channel);
+HAL_StatusTypeDef Si5351_ClearStickyBit(Si5351_ConfigTypeDef *Si5351_ConfigStruct,
+                                        Si5351_StatusBitTypeDef StatusBit);
 
-void Si5351_CLKPowerCmd(Si5351_ConfigTypeDef *Si5351_ConfigStruct, Si5351_CLKChannelTypeDef CLK_Channel);
-void Si5351_CLKConfig(Si5351_ConfigTypeDef *Si5351_ConfigStruct, Si5351_CLKChannelTypeDef CLK_Channel);
+HAL_StatusTypeDef Si5351_PLLConfig(Si5351_ConfigTypeDef *Si5351_ConfigStruct,
+                                   Si5351_PLLChannelTypeDef PLL_Channel);
 
-int Si5351_Init(Si5351_ConfigTypeDef *Si5351_ConfigStruct);
+HAL_StatusTypeDef Si5351_PLLReset(Si5351_ConfigTypeDef *Si5351_ConfigStruct,
+                                  Si5351_PLLChannelTypeDef PLL_Channel);
+
+HAL_StatusTypeDef Si5351_PLLSimultaneousReset(Si5351_ConfigTypeDef *Si5351_ConfigStruct);
+
+HAL_StatusTypeDef Si5351_SSConfig(Si5351_ConfigTypeDef *Si5351_ConfigStruct);
+
+HAL_StatusTypeDef Si5351_MSConfig(Si5351_ConfigTypeDef *Si5351_ConfigStruct,
+                                  Si5351_MSChannelTypeDef MS_Channel);
+
+HAL_StatusTypeDef Si5351_CLKPowerCmd(Si5351_ConfigTypeDef *Si5351_ConfigStruct,
+                                     Si5351_CLKChannelTypeDef CLK_Channel);
+
+HAL_StatusTypeDef Si5351_CLKConfig(Si5351_ConfigTypeDef *Si5351_ConfigStruct,
+                                   Si5351_CLKChannelTypeDef CLK_Channel);
+
+HAL_StatusTypeDef Si5351_Init(Si5351_ConfigTypeDef *Si5351_ConfigStruct);
+
+
 #endif /* SI5351_H_ */
